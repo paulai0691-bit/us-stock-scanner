@@ -8,7 +8,7 @@ def check_endpoint(provider_name: str, url: str) -> dict:
     report = {
         "provider": provider_name,
         "timestamp": datetime.now().isoformat(),
-        "url_tested": url.split("?")[0],
+        "url_tested": url.split("?")[0],  # API 키 포함된 쿼리스트링 제외 후 기록
         "status": "UNKNOWN",
         "http_status_code": None,
         "response_keys": [],
@@ -41,20 +41,22 @@ def check_endpoint(provider_name: str, url: str) -> dict:
     return report
 
 def run_validation():
-    print("API 연결 검증을 시작합니다...\n")
+    print("API 연결 및 데이터 수신 검증을 시작합니다...\n")
     
+    # st.secrets에서 키 로드
     fmp_key = st.secrets.get("FMP_API_KEY", "")
     av_key = st.secrets.get("ALPHAVANTAGE_API_KEY", "")
     eod_key = st.secrets.get("EODHD_API_TOKEN", "")
     fred_key = st.secrets.get("FRED_API_KEY", "")
     massive_key = st.secrets.get("MASSIVE_API_KEY", "")
     
+    # 테스트 엔드포인트 URL 구성
     targets = {
         "FMP": f"https://financialmodelingprep.com/api/v3/profile/AAPL?apikey={fmp_key}",
         "AlphaVantage": f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=AAPL&apikey={av_key}",
         "EODHD": f"https://eodhd.com/api/real-time/AAPL.US?api_token={eod_key}&fmt=json",
         "FRED": f"https://api.stlouisfed.org/fred/series/observations?series_id=UNRATE&api_key={fred_key}&file_type=json",
-        "Massive": f"https://api.massive.com/v1/test?apikey={massive_key}"
+        "Massive": f"https://api.polygon.io/v2/aggs/ticker/AAPL/prev?apiKey={massive_key}"
     }
     
     results = {}
@@ -68,7 +70,7 @@ def run_validation():
     with open(report_path, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=4, ensure_ascii=False)
         
-    print(f"\n검증 완료! 결과가 {report_path}에 저장되었습니다.")
+    print(f"\n검증 완료! 데이터 결과가 {report_path} 파일에 저장되었습니다.")
 
 if __name__ == "__main__":
     run_validation()
