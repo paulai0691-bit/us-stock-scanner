@@ -1,4 +1,5 @@
 import streamlit as st
+from ui.data_status import render_data_status_page
 
 st.set_page_config(
     page_title="US Stock Structural Opportunity Scanner",
@@ -24,5 +25,4 @@ with tab1:
     st.info("데이터 파이프라인 연동 대기 중입니다.")
 
 with tab5:
-    st.header("Data Provider Status")
-    st.markdown("API 상태 검증 결과를 확인합니다.")
+    render_data_status_page()
