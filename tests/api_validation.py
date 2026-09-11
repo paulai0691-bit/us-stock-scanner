@@ -1,1 +1,74 @@
+import os
+import json
+import requests
+import streamlit as st
+from datetime import datetime
 
+def check_endpoint(provider_name: str, url: str) -> dict:
+    report = {
+        "provider": provider_name,
+        "timestamp": datetime.now().isoformat(),
+        "url_tested": url.split("?")[0],
+        "status": "UNKNOWN",
+        "http_status_code": None,
+        "response_keys": [],
+        "sample_data": None,
+        "error": None
+    }
+    
+    try:
+        resp = requests.get(url, timeout=10)
+        report["http_status_code"] = resp.status_code
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            report["status"] = "VERIFIED"
+            
+            if isinstance(data, dict):
+                report["response_keys"] = list(data.keys())
+                report["sample_data"] = {k: str(v)[:80] for k, v in list(data.items())[:3]}
+            elif isinstance(data, list) and len(data) > 0:
+                report["response_keys"] = list(data[0].keys()) if isinstance(data[0], dict) else ["List"]
+                report["sample_data"] = data[0] if isinstance(data[0], dict) else str(data[:2])
+        else:
+            report["status"] = "FAILED"
+            report["error"] = f"HTTP {resp.status_code}: {resp.text[:200]}"
+            
+    except Exception as e:
+        report["status"] = "FAILED"
+        report["error"] = str(e)
+        
+    return report
+
+def run_validation():
+    print("API 연결 검증을 시작합니다...\n")
+    
+    fmp_key = st.secrets.get("FMP_API_KEY", "")
+    av_key = st.secrets.get("ALPHAVANTAGE_API_KEY", "")
+    eod_key = st.secrets.get("EODHD_API_TOKEN", "")
+    fred_key = st.secrets.get("FRED_API_KEY", "")
+    massive_key = st.secrets.get("MASSIVE_API_KEY", "")
+    
+    targets = {
+        "FMP": f"https://financialmodelingprep.com/api/v3/profile/AAPL?apikey={fmp_key}",
+        "AlphaVantage": f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=AAPL&apikey={av_key}",
+        "EODHD": f"https://eodhd.com/api/real-time/AAPL.US?api_token={eod_key}&fmt=json",
+        "FRED": f"https://api.stlouisfed.org/fred/series/observations?series_id=UNRATE&api_key={fred_key}&file_type=json",
+        "Massive": f"https://api.massive.com/v1/test?apikey={massive_key}"
+    }
+    
+    results = {}
+    for name, url in targets.items():
+        print(f"Testing {name}...")
+        results[name] = check_endpoint(name, url)
+        
+    os.makedirs("data/raw", exist_ok=True)
+    report_path = "data/raw/api_validation_report.json"
+    
+    with open(report_path, "w", encoding="utf-8") as f:
+        json.dump(results, f, indent=4, ensure_ascii=False)
+        
+    print(f"\n검증 완료! 결과가 {report_path}에 저장되었습니다.")
+
+if __name__ == "__main__":
+    run_validation()
