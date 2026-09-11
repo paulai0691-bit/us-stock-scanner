@@ -2,57 +2,25 @@ import os
 import json
 import requests
 import streamlit as st
-from datetime import datetime
-
-def check_endpoint_debug(provider_name: str, secret_key_name: str, url_template: str) -> dict:
-    key_value = st.secrets.get(secret_key_name, "").strip()
-    
-    # 1. 키 존재 여부 검사
-    if not key_value:
-        return {
-            "provider": provider_name,
-            "status": "FAILED",
-            "http_status_code": None,
-            "error": f"Streamlit Secrets에 '{secret_key_name}' 설정이 없거나 빈 값입니다."
-        }
-        
-    url = url_template.format(key=key_value)
-    
-    try:
-        resp = requests.get(url, timeout=10)
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            return {
-                "provider": provider_name,
-                "status": "VERIFIED",
-                "http_status_code": 200,
-                "response_keys": list(data.keys()) if isinstance(data, dict) else ["List Response"],
-                "error": None
-            }
-        else:
-            return {
-                "provider": provider_name,
-                "status": "FAILED",
-                "http_status_code": resp.status_code,
-                "error": f"HTTP {resp.status_code}: {resp.text[:200]}"
-            }
-            
-    except Exception as e:
-        return {
-            "provider": provider_name,
-            "status": "FAILED",
-            "http_status_code": None,
-            "error": f"요청 예외 발생: {str(e)}"
-        }
 
 def render_data_status_page():
-    st.subheader("API Data Providers Health & Detailed Debug")
-    st.write("각 API Key의 로드 여부와 서버 응답 메시지를 디버깅합니다.")
+    st.subheader("🛠️ Secrets (시크릿) 연동 문제 해결")
+    st.write("스트림릿 시크릿에 입력하신 설정이 코드와 어떻게 다르게 연결되었는지 확인합니다.")
 
-    if st.button("상세 진단 테스트 실행"):
-        with st.spinner("API Key 및 통신 상태를 종합 점검 중입니다..."):
-            
+    # 1. 스트림릿이 실제로 인식한 시크릿 키 목록 출력
+    try:
+        loaded_keys = list(st.secrets.keys())
+        if not loaded_keys:
+            st.error("🚨 **스트림릿이 아무런 시크릿 키도 읽지 못했습니다!** 설정창 입력 양식(따옴표 등)에 오류가 있을 가능성이 높습니다.")
+        else:
+            st.info(f"✅ **현재 스트림릿이 인식한 키 목록:** {loaded_keys}")
+    except Exception as e:
+        st.error(f"시크릿을 읽는 중 에러 발생: {e}")
+
+    st.markdown("---")
+    
+    if st.button("다시 API 연결 테스트 실행"):
+        with st.spinner("테스트 중입니다..."):
             endpoints = {
                 "FMP": ("FMP_API_KEY", "https://financialmodelingprep.com/api/v3/profile/AAPL?apikey={key}"),
                 "AlphaVantage": ("ALPHAVANTAGE_API_KEY", "https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=AAPL&apikey={key}"),
@@ -63,20 +31,27 @@ def render_data_status_page():
             
             results = {}
             for name, (secret_name, url_tmpl) in endpoints.items():
-                results[name] = check_endpoint_debug(name, secret_name, url_tmpl)
-                
+                key_val = st.secrets.get(secret_name, "").strip()
+                if not key_val:
+                    results[name] = {"status": "FAILED", "error": f"'{secret_name}' 값을 찾을 수 없습니다."}
+                    continue
+                    
+                url = url_tmpl.format(key=key_val)
+                try:
+                    resp = requests.get(url, timeout=10)
+                    if resp.status_code == 200:
+                        results[name] = {"status": "VERIFIED", "error": "정상 작동"}
+                    else:
+                        results[name] = {"status": "FAILED", "error": f"HTTP {resp.status_code}: {resp.text[:100]}"}
+                except Exception as e:
+                    results[name] = {"status": "FAILED", "error": str(e)}
+                    
             st.session_state["debug_results"] = results
-            st.success("진단이 완료되었습니다.")
 
     if "debug_results" in st.session_state:
-        results = st.session_state["debug_results"]
-        
-        st.markdown("### API별 진단 결과")
-        for name, info in results.items():
+        st.markdown("### 🔍 상세 진단 결과")
+        for name, info in st.session_state["debug_results"].items():
             if info["status"] == "VERIFIED":
-                st.success(f"**{name}**: VERIFIED (HTTP 200)")
+                st.success(f"**{name}**: ✅ 정상 작동")
             else:
-                st.error(f"**{name}**: FAILED | 원인: {info['error']}")
-
-        st.markdown("### 전체 JSON 디버그 결과")
-        st.json(results)
+                st.error(f"**{name}**: ❌ 실패 | 원인: {info['error']}")
