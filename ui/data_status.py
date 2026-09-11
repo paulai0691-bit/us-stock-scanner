@@ -2,7 +2,41 @@ import os
 import json
 import requests
 import streamlit as st
-from datetime import datetime
+
+def check_fmp_multi_fallback(api_key: str) -> dict:
+    """FMP의 신규 `/stable` 규격 및 구버전 `/api/v3` 규격을 순차적으로 테스트합니다."""
+    targets = [
+        ("v3_standard", f"https://financialmodelingprep.com/api/v3/profile/AAPL?apikey={api_key}", {}),
+        ("stable_param", f"https://financialmodelingprep.com/stable/profile?symbol=AAPL&apikey={api_key}", {}),
+        ("v3_header", "https://financialmodelingprep.com/api/v3/profile/AAPL", {"apikey": api_key}),
+    ]
+    
+    last_error = ""
+    for name, url, headers in targets:
+        try:
+            resp = requests.get(url, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                keys = list(data[0].keys()) if isinstance(data, list) and len(data) > 0 and isinstance(data[0], dict) else []
+                return {
+                    "provider": "FMP",
+                    "status": "VERIFIED",
+                    "http_status_code": 200,
+                    "endpoint_used": name,
+                    "response_keys": keys,
+                    "error": None
+                }
+            else:
+                last_error = f"[{name}] HTTP {resp.status_code}: {resp.text[:100]}"
+        except Exception as e:
+            last_error = f"[{name}] Exception: {str(e)}"
+            
+    return {
+        "provider": "FMP",
+        "status": "FAILED",
+        "http_status_code": None,
+        "error": last_error
+    }
 
 def check_endpoint(provider_name: str, secret_key_name: str, url_template: str) -> dict:
     key_value = st.secrets.get(secret_key_name, "").strip()
@@ -14,16 +48,17 @@ def check_endpoint(provider_name: str, secret_key_name: str, url_template: str) 
             "http_status_code": None,
             "error": f"'{secret_key_name}' 값이 설정되지 않았습니다."
         }
+
+    # FMP일 경우 다각도 엔드포인트 테스트 적용
+    if provider_name == "FMP":
+        return check_fmp_multi_fallback(key_value)
         
     url = url_template.format(key=key_value)
     
     try:
         resp = requests.get(url, timeout=10)
-        
         if resp.status_code == 200:
             data = resp.json()
-            
-            # 반환 데이터 구조에 따라 키 추출
             response_keys = []
             if isinstance(data, dict):
                 response_keys = list(data.keys())
